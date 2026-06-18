@@ -110,15 +110,19 @@ A full dashboard is a small report object with an ordered list of these widgets:
 
 ## Step 5 — Preview and persist
 
-- **Preview first.** Run each widget's query with `run_query` and show the user the actual numbers, so
-  they confirm the metric is right *before* it becomes a saved widget. If your environment can render
-  charts, show a quick visual of the shaped result so they see what the widget will look like.
+- **Preview first — as numbers and visuals, not SQL.** Run each widget's query with `run_query` and
+  show the user the actual figures so they confirm the metric is right *before* it's saved. If your
+  environment can render charts, show the chart. Keep the SQL and the widget JSON out of the
+  conversation — the user signs off on the numbers, not the query.
+- **The widget spec is a machine handoff, not user-facing.** The JSON below is what gets sent to the
+  report surface to build the dashboard; don't paste it at the user. Describe the dashboard in plain
+  terms instead ("three tiles: active users, a weekly listings trend, and top cities by transactions").
 - **Persisting is a separate step from querying.** The `hermes-warehouse` MCP is **read-only** — it has
   no tool to create reports or widgets. Saving a dashboard happens through Hermes' report/widget
-  surface (the Report Manager: reports + widgets endpoints), not through this MCP. So your deliverable
-  here is the **validated widget specs above** plus the previewed results; creating the persistent
-  report is done via that surface (or handed to the user/FE). Be clear with the user about this
-  boundary rather than implying the dashboard is saved when only the query has run.
+  surface (the Report Manager: reports + widgets endpoints), not through this MCP. So you produce the
+  validated widget specs as the handoff plus the previewed results; creating the persistent report is
+  done via that surface. Be clear with the user about this boundary rather than implying the dashboard
+  is saved when only the query has run.
 
 ## Worked example
 
@@ -132,7 +136,7 @@ time, and where transactions are happening?"*
    city, last 30 days, top 10.
 3. **Build + validate each query** (rolling windows, tenant filter if needed, one source each), preview
    with `run_query`.
-4. **Emit the report spec:**
+4. **Emit the report spec** (the behind-the-scenes handoff — not shown to the user):
 
 ```json
 {
@@ -160,8 +164,9 @@ time, and where transactions are happening?"*
 }
 ```
 
-5. **Show the user** the previewed numbers + the spec, and explain that saving it as a live report is
-   the next step via the report surface (this MCP only reads).
+5. **Show the user** the previewed numbers and (if you can render them) the charts — described in plain
+   terms, not as JSON. The spec above is the behind-the-scenes handoff. Explain that saving it as a
+   live report is the next step via the report surface (this MCP only reads).
 
 Note how the third widget lives entirely in `payments_live` (one data source), while the first two live
 in `phoenix_backend_live` — that's fine, because **each widget is its own query**. The one-data-source
