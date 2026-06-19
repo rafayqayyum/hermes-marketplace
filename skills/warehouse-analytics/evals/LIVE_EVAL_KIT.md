@@ -14,7 +14,9 @@ find in [`RESULTS_TEMPLATE.md`](RESULTS_TEMPLATE.md) (copy it per run) and bring
 1. **Pick a test user + tenant** with a realistic access profile. For the prompts to exercise
    everything, the user ideally has:
    - at least **two schemas in different data sources** (for the cross-source case #2),
-   - at least one **tenant-scoped** schema (the `:external_tenant_id` case #1),
+   - at least one **multi-tenant** schema — many tenants sharing the same tables, with a tenant
+     directory (e.g. a `tenants` table) — for the scoping/disambiguation cases #1 and #5,
+   - (optionally) a **schema-bound** `:external_tenant_id` schema, if you have one, for that rarer path,
    - and **no access** to at least one schema you can name (for the access-gap case #4).
 2. **Connect the MCP** in a Claude Code session:
    ```bash
@@ -29,13 +31,15 @@ find in [`RESULTS_TEMPLATE.md`](RESULTS_TEMPLATE.md) (copy it per run) and bring
 The prompts use generic names ("live marketplace", `payments_live`). Before running, **substitute your
 real schema/table names** so the questions are answerable:
 
-- **#1** — point "new listings last month" at a real listings-style table (note whether its schema is
-  tenant-scoped; that's what we want to test).
+- **#1** — point "new listings last month" at a real listings-style table in a **multi-tenant** schema;
+  scoping to one tenant (via the `tenant` argument) is the behavior under test.
 - **#2** — pick a "users" schema and a "payments/transactions" schema that genuinely live in **different
   data sources**.
 - **#3** — pick schemas that hold signups, listings, and transactions.
 - **#4** — replace `payments_live` with a schema the test user **genuinely cannot access**, so the gap
   is real (if they can access everything, this case can't fail).
+- **#5** — use a multi-tenant schema where a partial name (like "bayut") matches **more than one** tenant,
+  so disambiguation is actually required.
 
 Keep your substitutions in the results file so we can interpret the runs.
 
@@ -62,7 +66,8 @@ see them, the skill needs work regardless of the rest. Tally met/total per promp
 ### Prompt 1 — metric + trend (tenant scope)
 - [ ] Called `list_schemas` (or `my_access`) **before** writing SQL — ⛔ if it guessed table names
 - [ ] Confirmed the actual table + column names it used (drilled in)
-- [ ] If the table's schema is tenant-scoped, the query includes the literal `:external_tenant_id` filter
+- [ ] If the schema is multi-tenant, scoped to ONE tenant via the **`tenant` argument** — ⛔ if it
+      hand-wrote a `tenant_id` filter, or blended tenants without resolving/confirming which one
 - [ ] Used **aggregation** (COUNT / GROUP BY), not a `SELECT *` row dump
 - [ ] Called `validate_query` before `run_query` on the non-trivial query
 - [ ] Returned **both** months' figures + an explicit up/down (%) comparison
@@ -93,6 +98,13 @@ see them, the skill needs work regardless of the rest. Tally met/total per promp
 - [ ] Checked the inaccessible schema specifically (ideally `my_access check:"<schema>"`)
 - [ ] Stated plainly it's an **access gap** and how to request it from an admin
 - [ ] ⛔ Did **not** invent table names or try to query the inaccessible schema anyway
+
+### Prompt 5 — multi-tenant disambiguation
+- [ ] Recognized the schema is multi-tenant and the name was **ambiguous** — ⛔ if it silently picked one
+- [ ] **Asked / offered options** (or surfaced the candidates) rather than guessing
+- [ ] After the tenant was chosen, scoped via the **`tenant` argument** — ⛔ if it hand-wrote `tenant_id`
+- [ ] ⛔ Did **not** return an all-tenant total presented as one brand's
+- [ ] Stated which tenant the answer is for; only went `cross_tenant` if explicitly asked
 
 ## 5. What to bring back
 

@@ -53,17 +53,20 @@ A one-off query can hard-code `DATE '2026-05-01'`; a dashboard query should age 
   `created_at >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'` for a trailing-12-months
   view. Validate the exact expression with `validate_query` — Redshift's date functions differ from
   other engines.
-- **Keep tenant scoping.** If the schema is tenant-scoped, the widget query still needs
-  `WHERE external_tenant_id = :external_tenant_id`; it carries over unchanged.
+- **Scope to one tenant — outside the SQL.** A dashboard is for one tenant; don't bake a tenant filter
+  into the widget query. Record the tenant on the report and pass it as the `tenant` argument when you
+  preview/run each widget on a multi-tenant schema — the server injects the scoping. (The rarer
+  schema-bound schemas still use the in-SQL `:external_tenant_id` placeholder; see
+  [query-rules.md](query-rules.md).)
 - **Aggregate to the grain.** A `line_chart` query returns one row per bucket; a `metric` query
   returns one row, one value. Don't return raw rows and chart them later — return the shaped result.
 - **Order deterministically** (`ORDER BY day`, `ORDER BY metric DESC`) so the chart and the row-cap
   behave predictably.
 
-There is **no general query parameter mechanism** on this server beyond the auto-substituted
-`:external_tenant_id`. So a "parameterized" dashboard (e.g. a city filter) is expressed as either a
-rolling expression in the SQL, or as separate widgets per segment — not as runtime parameters you pass
-to `run_query`.
+The only runtime parameter is the **`tenant`** argument (it scopes multi-tenant schemas; the rarer
+schema-bound schemas auto-substitute `:external_tenant_id`). There's no *general* parameter mechanism —
+so a "parameterized" dashboard (e.g. a city filter) is expressed as a rolling expression in the SQL or
+as separate widgets per segment, not as runtime parameters beyond `tenant`.
 
 ## Step 3 — Pick the widget type
 
@@ -90,7 +93,7 @@ structure:
 {
   "title": "Monthly Revenue (last 12 months)",
   "widget_type": "line_chart",
-  "sql_query": "SELECT DATE_TRUNC('month', created_at) AS month, SUM(amount) AS revenue FROM payments_live.transactions WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months' GROUP BY 1 ORDER BY month",
+  "sql_query": "SELECT DATE_TRUNC('month', created_at) AS month, SUM(amount) AS revenue FROM payments.transactions WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months' GROUP BY 1 ORDER BY month",
   "config": { "x_axis": "month", "y_axis": "revenue", "label": "Monthly Revenue" }
 }
 ```
@@ -134,30 +137,30 @@ time, and where transactions are happening?"*
 2. **Define metrics** (confirm with user): active = distinct users with a session in the last 30 days;
    listings trend = new listings per week, last 12 weeks; transactions by city = completed txns per
    city, last 30 days, top 10.
-3. **Build + validate each query** (rolling windows, tenant filter if needed, one source each), preview
-   with `run_query`.
+3. **Build + validate each query** (rolling windows, one source each), and for multi-tenant schemas pass
+   the dashboard's tenant via the `tenant` argument — not in the SQL — then preview with `run_query`.
 4. **Emit the report spec** (the behind-the-scenes handoff — not shown to the user):
 
 ```json
 {
-  "report": { "title": "Marketplace Health", "description": "Live marketplace KPIs" },
+  "report": { "title": "Marketplace Health", "description": "Live marketplace KPIs", "tenant": "olx-eg" },
   "widgets": [
     {
       "title": "Active Users (last 30 days)",
       "widget_type": "metric",
-      "sql_query": "SELECT COUNT(DISTINCT user_id) AS active_users FROM phoenix_backend_live.sessions WHERE external_tenant_id = :external_tenant_id AND started_at >= DATEADD(day, -30, CURRENT_DATE)",
+      "sql_query": "SELECT COUNT(DISTINCT user_id) AS active_users FROM marketplace.sessions WHERE started_at >= DATEADD(day, -30, CURRENT_DATE)",
       "config": { "label": "Active Users (30d)" }
     },
     {
       "title": "New Listings per Week (12 weeks)",
       "widget_type": "line_chart",
-      "sql_query": "SELECT DATE_TRUNC('week', created_at) AS week, COUNT(*) AS new_listings FROM phoenix_backend_live.listings WHERE external_tenant_id = :external_tenant_id AND created_at >= DATEADD(week, -12, CURRENT_DATE) GROUP BY 1 ORDER BY week",
+      "sql_query": "SELECT DATE_TRUNC('week', created_at) AS week, COUNT(*) AS new_listings FROM marketplace.listings WHERE created_at >= DATEADD(week, -12, CURRENT_DATE) GROUP BY 1 ORDER BY week",
       "config": { "x_axis": "week", "y_axis": "new_listings", "label": "New Listings / Week" }
     },
     {
       "title": "Top Cities by Completed Transactions (30d)",
       "widget_type": "bar_chart",
-      "sql_query": "SELECT c.name AS city, COUNT(*) AS completed_txns FROM payments_live.transactions t JOIN payments_live.cities c ON c.id = t.city_id WHERE t.status = 'completed' AND t.created_at >= DATEADD(day, -30, CURRENT_DATE) GROUP BY c.name ORDER BY completed_txns DESC LIMIT 10",
+      "sql_query": "SELECT c.name AS city, COUNT(*) AS completed_txns FROM payments.transactions t JOIN payments.cities c ON c.id = t.city_id WHERE t.status = 'completed' AND t.created_at >= DATEADD(day, -30, CURRENT_DATE) GROUP BY c.name ORDER BY completed_txns DESC LIMIT 10",
       "config": { "x_axis": "city", "y_axis": "completed_txns", "label": "Completed Transactions by City" }
     }
   ]
@@ -168,6 +171,10 @@ time, and where transactions are happening?"*
    terms, not as JSON. The spec above is the behind-the-scenes handoff. Explain that saving it as a
    live report is the next step via the report surface (this MCP only reads).
 
-Note how the third widget lives entirely in `payments_live` (one data source), while the first two live
-in `phoenix_backend_live` — that's fine, because **each widget is its own query**. The one-data-source
-rule applies per query, not per dashboard.
+The report carries the **tenant** once (`"olx-eg"`); every multi-tenant widget is previewed/run with
+that `tenant` argument, so the SQL stays tenant-free and the whole dashboard reads one tenant
+consistently. (If a widget should span all tenants, mark it `cross_tenant` instead.)
+
+Note how the third widget lives entirely in `payments` (one data source), while the first two live in
+`marketplace` — that's fine, because **each widget is its own query**. The one-data-source rule applies
+per query, not per dashboard.

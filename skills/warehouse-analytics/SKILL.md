@@ -39,9 +39,10 @@ It has four tools:
   they unlock. Pass `check:"schema"` or `check:"schema.table"` to test one specific name. Use it to
   answer "what can I see?" and to explain how to request access to something missing.
 - **`validate_query`** — checks whether a query *would* be accepted, without running it. Returns
-  `ok — query is valid. References: …` or `invalid: <reason>`.
+  `ok — query is valid. References: …` or `invalid: <reason>`. Pass the same `tenant` you'll run with.
 - **`run_query`** — runs one read-only `SELECT` and returns a text table plus an `N row(s).` footer.
-  Optional `max_rows` (clamped down to the server cap).
+  Optional `max_rows` (clamped down to the server cap). For multi-tenant schemas, takes a **`tenant`**
+  argument (and `cross_tenant`) — see [Answering for one tenant](#answering-for-one-tenant).
 
 Two things to internalize, because they shape everything:
 
@@ -52,6 +53,38 @@ Two things to internalize, because they shape everything:
 2. **The server already carries short usage instructions** of its own. This skill is the layer on
    top: the human conversation, the schema-hunting strategy, the query craft, and how to land a
    dashboard. Don't just fire tools — run the journey below.
+
+## Answering for one tenant
+
+Many schemas are **multi-tenant**: one project's data covers several brands/markets/portals
+("tenants") that live in the *same* tables. Counting across all of them silently blends unrelated
+businesses into one misleading number — so the rule is simple:
+
+> **Always answer for exactly one tenant.** Never blend tenants unless the user explicitly asks to.
+
+You don't write any tenant filter yourself. When a query touches multi-tenant data you pass a
+**`tenant`** argument to `validate_query`/`run_query` (a tenant name/slug, e.g. `"north-region"`, or
+its numeric id) and **the server scopes every row to that one tenant for you**. If you query
+multi-tenant data without it, the server rejects the call and tells you to specify a tenant — that's
+your cue, not an error to work around.
+
+**Be chatty and figure out the right tenant — don't guess.** Two unknowns usually need resolving:
+
+1. **Which project/source** holds the answer (normal schema discovery — see phase 2).
+2. **Which tenant** within it. If the user hasn't said, or the name is ambiguous, **ask**. You can list
+   a project's tenants by querying its tenant directory (usually a `tenants` table in that schema — it
+   isn't itself tenant-scoped, so it queries freely); offer the user the recognizable names. Tenant
+   names often collide (e.g. two different "… SA" brands), so confirm rather than assume.
+
+Keep this conversation in **business language** — ask "which brand/market — OLX Egypt, Dubizzle, …?",
+not "which `tenant_id`?". Once you know it, pass it as `tenant` and proceed.
+
+- **Reading across all tenants** is occasionally what the user truly wants ("group signups by brand",
+  "company-wide total"). Only then, pass **`cross_tenant: true`** to opt out of single-tenant scoping —
+  and say plainly that the figure spans all tenants.
+- **A different, rarer mechanism:** a few schemas are bound *wholly* to one tenant. Those use the literal
+  `:external_tenant_id` placeholder instead (the server substitutes it). You'll only meet this if a
+  query is rejected asking for that placeholder — details in [query-rules.md](references/query-rules.md).
 
 ## How to talk to the user (business-first)
 
@@ -71,7 +104,7 @@ the plumbing. Let that shape every reply:
 
 **Concrete contrast — same question, two replies:**
 
-> ❌ "I ran `SELECT COUNT(*) FROM phoenix_backend_live.listings WHERE created_at >= …`. That table has
+> ❌ "I ran `SELECT COUNT(*) FROM marketplace.listings WHERE created_at >= …`. That table has
 >    columns id, title, created_at, status, city_id… Result: | count | 12400 |"
 >
 > ✅ "You had about **12,400 new listings last month — up ~8%** on the month before. Want the breakdown
@@ -99,6 +132,9 @@ A query is only as good as the spec behind it, so pin down, in your head or with
 - **The grain** — per what? Per day, per user, per listing, per city, a single total?
 - **The time window** — last month, last 30 days, year to date, all time?
 - **Filters / segments** — a particular city, category, status, platform?
+- **The tenant** — for multi-tenant data, *which* brand/market/portal? Resolve this before querying
+  (see [Answering for one tenant](#answering-for-one-tenant)); it's the easiest thing to get silently
+  wrong.
 - **The deliverable** — a single number, a ranked table, a trend over time, or a saved dashboard?
 
 Ask **at most one or two sharp clarifying questions, and only when the answer would change the
@@ -138,10 +174,9 @@ how the server behaves:
 - **Aggregate first.** Results are capped (500 rows) and the cap wraps your *whole* query, so a bare
   `SELECT *` just comes back truncated and misleading. Lead with `GROUP BY`, `COUNT/SUM/AVG`, and a
   `WHERE` on the time window — return the answer, not a data dump.
-- **Tenant-scoped schemas** require filtering rows with the literal `:external_tenant_id` placeholder
-  (e.g. `WHERE external_tenant_id = :external_tenant_id`). Write it verbatim — the server substitutes
-  the real value. You'll know a schema needs this because the query gets rejected with a message
-  telling you to add it.
+- **Multi-tenant schemas** — do **not** write a tenant filter into the SQL. Pass the `tenant` argument
+  instead and let the server inject the scoping (see [Answering for one tenant](#answering-for-one-tenant)).
+  Writing `WHERE tenant_id = …` yourself is redundant and error-prone — you don't need the id.
 - CTEs (`WITH …`) are allowed and are great for readability; only the *outer* table references need
   schema-qualifying.
 
@@ -168,6 +203,7 @@ answer, then the supporting detail:
 
 Always surface the things that affect trust — briefly, in plain terms:
 
+- **which tenant** the answer covers (or that it spans all tenants, if you used `cross_tenant`),
 - the **time window and filters** you actually applied,
 - any **assumptions** you made in phase 1,
 - whether the result **hit the row cap** (if so, the answer is partial — aggregate further or narrow
@@ -191,7 +227,8 @@ The server enforces these; violating them wastes a round-trip. Details and examp
 - One statement, **`SELECT` only** — no `INSERT/UPDATE/DELETE/MERGE` or DDL, not even inside a CTE.
 - **Every table schema-qualified** (`schema.table`); CTE names are exempt.
 - **One data source per query** — no joining tables that live in different connections.
-- **Tenant-scoped schemas** need the literal `:external_tenant_id` filter.
+- **Multi-tenant schemas** — pass the `tenant` argument (never hand-write the filter); one tenant per
+  query unless the user asks for `cross_tenant`.
 - Results are **row-capped** — prefer aggregation/filters over relying on `LIMIT`.
 
 ## When the data isn't accessible
@@ -220,7 +257,8 @@ they can change here. Handle gaps plainly and helpfully, in business terms:
 ## References
 
 - **[references/query-rules.md](references/query-rules.md)** — the full SQL contract: rejection
-  messages and how to fix each, the tenant placeholder pattern, the single-data-source rule, the
+  messages and how to fix each, the tenant-scoping rules (the `tenant` argument for multi-tenant
+  schemas, plus the schema-bound `:external_tenant_id` placeholder), the single-data-source rule, the
   row-cap/aggregation strategy, and worked examples. Read before writing non-trivial SQL.
 - **[references/dashboards.md](references/dashboards.md)** — taking a finalized query to a dashboard:
   defining the metric, parameterizing the query, choosing a visualization, and handing off to the
