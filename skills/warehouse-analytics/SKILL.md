@@ -135,7 +135,8 @@ A query is only as good as the spec behind it, so pin down, in your head or with
 - **The tenant** — for multi-tenant data, *which* brand/market/portal? Resolve this before querying
   (see [Answering for one tenant](#answering-for-one-tenant)); it's the easiest thing to get silently
   wrong.
-- **The deliverable** — a single number, a ranked table, a trend over time, or a saved dashboard?
+- **The deliverable** — a single number, a ranked table, a trend over time, a saved dashboard, or a
+  downloadable file (Excel/CSV)?
 
 Ask **at most one or two sharp clarifying questions, and only when the answer would change the
 query.** Otherwise, state your assumptions explicitly ("taking 'active' as logged in within the last
