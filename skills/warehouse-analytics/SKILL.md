@@ -50,6 +50,8 @@ Two things to internalize, because they shape everything:
    signed-in user's access profiles permit, and `run_query` refuses anything outside that set. You
    never have to police access — you just work within what the catalog shows you. If something isn't
    in the catalog, the user can't query it (see [When the data isn't accessible](#when-the-data-isnt-accessible)).
+   (Rarely the policy catalog and the live database grants drift apart, so a *listed* schema is still
+   denied at query time — handle that as an access gap, [below](#when-the-data-isnt-accessible).)
 2. **The server already carries short usage instructions** of its own. This skill is the layer on
    top: the human conversation, the schema-hunting strategy, the query craft, and how to land a
    dashboard. Don't just fire tools — run the journey below.
@@ -138,10 +140,36 @@ A query is only as good as the spec behind it, so pin down, in your head or with
 - **The deliverable** — a single number, a ranked table, a trend over time, a saved dashboard, or a
   downloadable file (Excel/CSV)?
 
-Ask **at most one or two sharp clarifying questions, and only when the answer would change the
-query.** Otherwise, state your assumptions explicitly ("taking 'active' as logged in within the last
-30 days, and 'last month' as the last full calendar month") and proceed. A concrete answer the user
-can correct beats an interrogation.
+**Clarify before you dig — but stay sharp, not exhausting.** There are two ways to fail here, and the
+quieter one is worse: interrogating the user with a wall of questions, *or* silently **guessing** the
+scope and spending a whole discovery loop answering the wrong question. Calibrate to how much the
+request actually pins down:
+
+- **Vague or first-of-conversation asks** ("get all active users of Dubizzle KSA", "show me revenue")
+  almost always hide a scope-changing fork. **Resolve it before you run discovery** — ideally as one
+  compact round of choices, not a prose interrogation. A wrong guess stays invisible until you present
+  a confident answer to a question the user never asked.
+- **Well-specified asks** — proceed, and simply **state the assumptions** you're making ("taking
+  'active' as logged in within the last 30 days, 'last month' as the last full calendar month") so the
+  user can correct them in passing.
+
+Three things are *silently-wrong* traps — pin them down before querying, never assume them:
+
+1. **Which brand / tenant.** The easiest thing to get wrong and the costliest — see
+   [Answering for one tenant](#answering-for-one-tenant). Names collide ("…SA" may be two different
+   brands), and a plausible-looking schema name is **not** confirmation. If the user named a brand,
+   confirm it resolves to one tenant; if they didn't, ask.
+2. **What a fuzzy metric word means.** "Active users" is not one thing — daily vs. monthly vs.
+   logged-in-within-N-days vs. posted/transacted, and some sources also carry a literal account
+   **status** called "active". "Engaged", "churned", "new", "completed" are the same trap. Confirm the
+   definition; don't quietly adopt the first column whose name happens to match.
+3. **Count vs. list vs. trend.** "All active users" *sounds* like a roster, but these tools return
+   aggregated, **row-capped** data — built to return a number or a trend, not every account. If the
+   user truly wants per-row detail, tell them what's feasible (see
+   [data-export.md](references/data-export.md)) rather than silently handing back a truncated list.
+
+One compact question that nails brand + definition + deliverable beats both an interrogation and a
+confident wrong answer.
 
 ### 2 — Discover the data
 
@@ -252,6 +280,12 @@ they can change here. Handle gaps plainly and helpfully, in business terms:
   access. Never invent names or work around it.
 - **A query comes back "you do not have access to …":** same thing — explain it simply, don't retry
   variants.
+- **A query fails with a raw "permission denied for schema X" even though `my_access` and
+  `list_schemas` listed X:** the policy catalog and the live database grants have drifted — the user is
+  cleared in policy but the warehouse role lacks the underlying grant. Treat it as a genuine access
+  gap: tell them the data is catalogued for them but not yet granted at the database level, and an
+  admin needs to fix the grant. **Do not** quietly fall back to a similar-looking sibling schema and
+  present its numbers as the answer.
 
 ## Trust and safety
 
