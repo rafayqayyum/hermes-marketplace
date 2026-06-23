@@ -212,13 +212,19 @@ Always surface the things that affect trust — briefly, in plain terms:
 
 Offer the underlying query only if the user asks to see it.
 
-### 7 — Refine, or build a dashboard
+### 7 — Refine, build a dashboard, or export the data
 
 Offer the natural next step. Often it's a refinement (different window, a breakdown, a segment) — just
-loop back. When the user wants something **durable** — "a dashboard", "a report", "track this weekly" —
-shift from one-off SQL to a **reusable, parameterized query plus a visualization choice**. See
-**[references/dashboards.md](references/dashboards.md)** for how to define the metric crisply,
-parameterize the query, pick the right chart, and hand off for persistence.
+loop back. Two other deliverables come up often:
+
+- **A durable, re-runnable visual** — "a dashboard", "a report", "track this weekly". Shift from
+  one-off SQL to a **reusable, parameterized query plus a visualization choice**. See
+  **[references/dashboards.md](references/dashboards.md)** for defining the metric crisply,
+  parameterizing the query, picking the right chart, and handing off for persistence.
+- **The data as a file** — "export to Excel", "download as a spreadsheet", "send me the csv". The
+  deliverable is an `.xlsx`/`.csv` the user keeps, not a chat table. Mind the 500-row cap (paginate for
+  detail) and build a clean, typed, self-describing file. See
+  **[references/data-export.md](references/data-export.md)**.
 
 ## Hard query rules (at a glance)
 
@@ -264,3 +270,6 @@ they can change here. Handle gaps plainly and helpfully, in business terms:
 - **[references/dashboards.md](references/dashboards.md)** — taking a finalized query to a dashboard:
   defining the metric, parameterizing the query, choosing a visualization, and handing off to the
   Hermes report manager for persistence.
+- **[references/data-export.md](references/data-export.md)** — turning a query result into a
+  downloadable **Excel/CSV** file: working within the 500-row cap (keyset pagination for detail),
+  shaping typed/labelled columns, adding a self-describing "About" sheet, and handing off the file.
