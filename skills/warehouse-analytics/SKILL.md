@@ -32,9 +32,14 @@ found, don't show the query. If the user wants any of that, they'll ask. Details
 The `hermes-warehouse` MCP server exposes the data warehouse as **read-only, governed SQL**.
 It has four tools:
 
-- **`list_schemas`** — the catalog. Drill-down: no params → schemas (each ≈ one project/database)
-  with table counts; `schema:"name"` → its tables; `table:"schema.table"` → that table's columns;
-  `search:"keyword"` → tables/columns matching a keyword (capped at 50 results).
+- **`list_schemas`** — the catalog **and the knowledge base on top of it**. Drill-down: no params →
+  schemas (each ≈ one project/database) with table counts; `schema:"name"` → its tables;
+  `table:"schema.table"` → that table's columns; `search:"keyword"` → tables/columns matching a keyword
+  (capped at 50 results). Every level now carries human-written **metadata**: each schema can come with a
+  one-line `description` and a `[knowledge_base: …]` hint (what the project is, which brand/market it
+  serves, how its business terms map to it); tables carry descriptions; columns carry their type plus
+  `[PK]` / `[FK → …]` / `[UNIQUE]` flags. This metadata is the **business-meaning layer** — lean on it
+  (see [Lean on the knowledge base](#lean-on-the-knowledge-base)).
 - **`my_access`** — who you are and what you may query: your assigned access profiles and the schemas
   they unlock. Pass `check:"schema"` or `check:"schema.table"` to test one specific name. Use it to
   answer "what can I see?" and to explain how to request access to something missing.
@@ -55,6 +60,42 @@ Two things to internalize, because they shape everything:
 2. **The server already carries short usage instructions** of its own. This skill is the layer on
    top: the human conversation, the schema-hunting strategy, the query craft, and how to land a
    dashboard. Don't just fire tools — run the journey below.
+3. **The catalog now teaches you the business, not just the structure.** Schema/table/column names
+   tell you the *shape* of the warehouse; the `description` and `knowledge_base` annotations tell you
+   what it *means* — what each project is, which brand/market/tenant it serves, and which words a user
+   might say ("Bayut EG", "Hatla2ee", "OLX", "Motors") map to it. When this knowledge is present, it's
+   the difference between a confident guess and a correct answer. Read it before you map a question to a
+   source — see [Lean on the knowledge base](#lean-on-the-knowledge-base).
+
+## Lean on the knowledge base
+
+The warehouse now ships **curated business context** alongside the raw catalog, surfaced right inside
+`list_schemas`: a schema may carry a `description` and a `[knowledge_base: …]` hint, tables and columns
+carry descriptions, and columns carry `[PK]` / `[FK → …]` / `[UNIQUE]` flags. Treat this as a domain
+expert sitting next to you — it exists precisely so you don't have to infer meaning from cryptic names.
+
+**Always read it before mapping a question to a source.** A name like `nova_id`, `legion_id`,
+`platform_external_id`, or a schema prefix like `odl_olxeg` / `podl_bayutsa` / `modl_hatla2eeeg` is
+opaque until the knowledge base tells you it means "Bayut EG via the Nova account id" or "OLX Egypt
+classifieds". The same business word can fan out to **two** sources (e.g. "Bayut EG" and "Motors EG"
+each carry both a Bayut/Hatla2ee side *and* an OLX side), and the knowledge base is what keeps you from
+silently conflating them. Use it to resolve three things you'd otherwise guess: **which schema** holds
+the answer, **which tenant** within it, and **which identity/join column** ties a client to their data.
+
+**When the knowledge base is available for the relevant schema, don't answer off a single query — make
+a few grounding queries first (aim for at least 2–3).** The point is to *verify the mapping the
+knowledge base implies* before you commit to a number, for example:
+
+1. confirm the **tenant** resolves and is the one the user means (query the schema's tenant directory),
+2. sanity-check the **metric/grain** — e.g. a small `GROUP BY` or a date-bounded `COUNT` to confirm the
+   column means what its description says and the volume is plausible,
+3. confirm the **identity/segment** join the knowledge base points to actually lines up before you
+   build the real aggregate on top of it.
+
+These are cheap, aggregated probes (keep them within the row cap), run **silently** — they're how you
+earn the confident one-line answer, not something to narrate to the user. If a schema carries *no*
+knowledge-base context, fall back to normal discovery (phase 2) and state your assumptions; don't
+invent meaning that isn't there.
 
 ## Answering for one tenant
 
@@ -177,13 +218,21 @@ Never guess table or column names — the server rejects unqualified or unknown 
 burns round-trips. Instead:
 
 - Call `list_schemas` with **no params** to see which schemas you can access. Each schema is roughly
-  one project's database. (If the user's question is itself about access — "what can I query?", "do I
+  one project's database. **Read the `description` and `[knowledge_base: …]` hints it returns** — they
+  tell you which schema maps to the brand/market the user named, so you pick the right source instead of
+  pattern-matching a prefix. (If the user's question is itself about access — "what can I query?", "do I
   have access to X?" — reach for `my_access` instead; it names their profiles and can `check` a
   specific schema/table.)
 - Use `list_schemas search:"<noun>"` with concrete nouns from the question ("listing", "payment",
   "user", "transaction") to locate candidate tables and columns quickly across all your schemas.
 - Confirm the exact shape with `list_schemas schema:"<name>"` then `list_schemas table:"schema.table"`
-  before writing SQL. Match real column names and types — don't assume `created_at` exists; check.
+  before writing SQL. Read the **table/column descriptions and the `[PK]`/`[FK → …]`/`[UNIQUE]` flags** —
+  they hand you the join keys and the real meaning of each column. Match real column names and types —
+  don't assume `created_at` exists; check.
+- **Where the schema carries knowledge-base context, run a couple of grounding queries (≈2–3) before the
+  final one** to verify the mapping it implies — tenant, metric, and identity/join — exactly as in
+  [Lean on the knowledge base](#lean-on-the-knowledge-base). This is how you avoid a confident wrong
+  answer when business terms fan out across sources.
 
 The catalog you can see **is** your full access. If nothing relevant shows up, treat it as an access
 gap, not a reason to invent names.
