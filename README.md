@@ -7,7 +7,10 @@ in plain language — safely. It bundles two halves that work together:
   surface served by [`hermes-backend`](../hermes-backend) at `POST /mcp`. Every call
   is scoped to the signed-in user's **access profiles**, so a user can only ever see and
   query the schemas they're entitled to. The server validates SQL, enforces single
-  schema-qualified `SELECT`s, injects tenant scoping, and caps result rows.
+  schema-qualified `SELECT`s, injects tenant scoping, and caps result rows. It also exposes
+  **knowledge-base search** (`search_knowledge_base`) — semantic search over the curated
+  metric definitions attached to each schema, gated by the same access profiles, so one
+  connector surfaces every knowledge base the user can reach (no per-corpus connector needed).
 - **`warehouse-analytics` skill** — the playbook Claude follows to take a vague question
   ("how are listings doing this month?") through schema discovery, query construction,
   validation, execution, and presentation — ending in either a fetched answer or a
@@ -86,7 +89,8 @@ their access profiles grant.
 
 Anything that needs warehouse data: counts, trends, "top N", funnels, retention, KPIs,
 "pull the data on X", "build me a dashboard for Y". The skill figures out which schema and
-tables to use, writes a compliant query, validates and runs it, and explains the result.
+tables to use, looks up what each metric *means* in that schema's knowledge base, writes a
+compliant query, validates and runs it, and explains the result.
 
 ## Layout
 
