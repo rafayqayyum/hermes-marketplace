@@ -74,7 +74,10 @@ Three things to internalize, because they shape everything:
 2. **The warehouse holds the data; the knowledge base holds the meaning.** Names and types tell you the
    *shape* of the data. They do **not** tell you how a metric is defined, which exclusions apply, or
    which of two similar tables is authoritative. That knowledge lives in the catalog's annotations and,
-   above all, in the shared knowledge base — so reach for those *before* you reason from column names.
+   above all, in the knowledge base — so reach for those *before* you reason from column names.
+   **Concretely: for any named metric, run at least three knowledge-base searches before you write a
+   single line of SQL** (definition, source tables, exclusions) — a hard gate, see
+   [The shared knowledge base](#the-shared-knowledge-base).
 3. **You run a journey, not a single tool call.** The server carries short usage notes of its own; this
    skill is the layer on top — the human conversation, looking up definitions, the discovery strategy,
    the query craft, and how to land a dashboard. Don't just fire tools — follow the journey below.
@@ -120,18 +123,20 @@ So whenever the user names a business metric or term whose definition isn't self
 schema, follow that schema's `[knowledge_base: …]` pointer, and query the KB it names** — before you
 choose columns or write any SQL.
 
-**Query it at least 2–3 times, from different angles — one search is never enough.** This is the single
-most important habit for getting a metric right. A lone search almost always returns only *part* of the
-picture; you build reliable knowledge by interrogating the KB several ways and letting the results
-compound. A solid series covers:
+**Run at least three knowledge-base searches before you write a single line of SQL. This is a hard
+gate, not a suggestion — do not call `validate_query` or `run_query` for the answer until you've done
+it.** One search almost always returns only *part* of the picture, so you build reliable knowledge by
+interrogating the KB from several angles and letting the results compound. Your three searches — at a
+minimum — cover:
 
 1. **the definition / formula** — what the metric actually is;
 2. **the exact source tables and fields** it is computed from;
 3. **the exclusions, edge cases, and related or synonymous terms** that change the number.
 
-Treat each search as *updating your knowledge* before you commit to SQL — the second and third searches
-routinely surface a missing exclusion, or the authoritative source table, that the first one didn't.
-Only once the picture is complete do you write the query.
+Keep going past three whenever an answer is thin, generic, or raises a new question — three is the
+floor, not the target. Treat each search as *updating your knowledge* before you commit to SQL: the
+second and third searches routinely surface a missing exclusion, or the authoritative source table,
+that the first one didn't. Only once the picture is genuinely complete do you write the query.
 
 **Compute the metric from exactly the source its definition names — never a look-alike.** A definition
 usually pins the metric to specific tables and fields; use those *verbatim*. The costly, easy mistake is
@@ -274,11 +279,11 @@ and a guessed formula produces a confident wrong number. Work in this order:
   tells you which schema maps to the brand/market and metric in question; the hint tells you which
   knowledge base defines it. (If the question is itself about access — "what can I query?", "do I have
   access to X?" — reach for `my_access`; it names their profiles and can `check` a specific name.)
-- **Follow that schema's `[knowledge_base: …]` pointer and query the KB it names — at least 2–3 times**
-  (definition, source tables, exclusions) until the metric's picture is complete, exactly as in
+- **Follow that schema's `[knowledge_base: …]` pointer and query the KB it names — at least 3 searches,
+  no SQL before that** (definition, source tables, exclusions), exactly as in
   [The shared knowledge base](#the-shared-knowledge-base). Use the KB the schema points to, **not**
   whichever one you searched first. This is what decides which tables and formula the rest of discovery
-  is looking for.
+  is looking for — so it is a hard gate before `validate_query`/`run_query`, not an optional extra.
 - **Confirm the exact shape** with `list_schemas schema:"<name>"` then `list_schemas table:"schema.table"`.
   Read the **table/column descriptions and the `[PK]`/`[FK → …]`/`[UNIQUE]` flags** — they hand you the
   join keys and the real meaning of each column. Match real names and types — don't assume `created_at`
