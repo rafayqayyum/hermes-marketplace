@@ -48,8 +48,9 @@ four tools:
   project/database) with table counts; `schema:"name"` → its tables; `table:"schema.table"` → that
   table's columns; `search:"keyword"` → tables/columns matching a keyword (capped at 50 results). Every
   level also carries human-written **metadata** — schema and table `description`s, a per-schema
-  `[knowledge_base: …]` hint, and per-column type plus `[PK]` / `[FK → …]` / `[UNIQUE]` flags. Read it;
-  see [The catalog carries meaning](#the-catalog-carries-meaning).
+  `[knowledge_base: …]` hint (which **names the knowledge base that defines that schema's metrics** —
+  your routing pointer), and per-column type plus `[PK]` / `[FK → …]` / `[UNIQUE]` flags. Read it; see
+  [The catalog carries meaning](#the-catalog-carries-meaning).
 - **`my_access`** — who you are and what you may query: your assigned access profiles and the schemas
   they unlock. Pass `check:"schema"` or `check:"schema.table"` to test one specific name. Use it to
   answer "what can I see?" and to explain how to request access to something missing.
@@ -83,8 +84,10 @@ Three things to internalize, because they shape everything:
 `list_schemas` is more than a list of names — every level carries human-written metadata, and skipping
 it is how you end up guessing:
 
-- **Schemas** — each can carry a one-line `description` and a `[knowledge_base: …]` hint: what the
-  project is, which brand/market it serves, and which words a user might say that map to it.
+- **Schemas** — each can carry a one-line `description` (what the project is, which brand/market it
+  serves) **and a `[knowledge_base: …]` hint that names the knowledge base which defines that schema's
+  metrics.** That hint is your **routing pointer** — it tells you *where* a term like "shipping cost" is
+  actually defined (see [The shared knowledge base](#the-shared-knowledge-base)).
 - **Tables** — short descriptions of what each one holds.
 - **Columns** — their type plus `[PK]` / `[FK → …]` / `[UNIQUE]` flags, which hand you the join keys and
   the real meaning of each field.
@@ -93,20 +96,29 @@ This is the layer that turns a cryptic schema or column name into something you 
 A bare identifier is opaque until its description explains it; and the same business word can fan out to
 more than one schema, so these hints are what stop you from silently conflating two different sources.
 **Read them before you decide which source answers the question** — a plausible-looking name is not
-confirmation.
+confirmation, and the schema's `[knowledge_base: …]` hint is what tells you which KB to ask next.
 
 ## The shared knowledge base
 
 The catalog tells you *where* data lives. It does not, on its own, tell you how a **business metric is
-defined**. For that you have a separate resource available to you directly: a **shared domain knowledge
-base** — a curated body of business knowledge (metric definitions, formulas, business rules, exclusions,
-edge cases) maintained precisely so you don't have to reverse-engineer meaning from column names. Treat
-it as a domain expert you can interview on demand.
+defined**. For that you have separate **knowledge bases** available to you directly — curated bodies of
+business knowledge (metric definitions, formulas, business rules, exclusions, edge cases) maintained
+precisely so you don't have to reverse-engineer meaning from column names. Treat them as domain experts
+you can interview on demand.
 
 > **The warehouse holds the data. The knowledge base holds the meaning and the formula.**
 
-So whenever the user names a business metric or term whose definition isn't self-evident from the
-column names, **consult the shared knowledge base first** — before you choose tables or write any SQL.
+**There is usually more than one knowledge base, each scoped to a different domain — so don't guess
+which one to use, and don't default to whichever you searched first. Let the schema tell you.** Every
+schema in `list_schemas` carries a `[knowledge_base: …]` hint naming the KB that defines *its* metrics.
+Once you've found the schema that holds the answer, **follow that hint and consult the KB it names.**
+This is the exact miss to avoid: querying one domain's knowledge base about a metric that belongs to
+another, getting only generic hits, and then guessing the formula from column names — when the schema's
+own pointer named the right KB all along.
+
+So whenever the user names a business metric or term whose definition isn't self-evident, **find its
+schema, follow that schema's `[knowledge_base: …]` pointer, and query the KB it names** — before you
+choose columns or write any SQL.
 
 **Query it at least 2–3 times, from different angles — one search is never enough.** This is the single
 most important habit for getting a metric right. A lone search almost always returns only *part* of the
@@ -251,23 +263,23 @@ Three things are *silently-wrong* traps — pin them down before querying, never
 One compact question that nails brand + definition + deliverable beats both an interrogation and a
 confident wrong answer.
 
-### 2 — Look up meaning, then discover the data
+### 2 — Find the schema, follow its knowledge base, then confirm the columns
 
 Never guess a definition, a table, or a column name — the server rejects unqualified or unknown names,
-and a guessed formula produces a confident wrong number. Work meaning-first:
+and a guessed formula produces a confident wrong number. Work in this order:
 
-- **If the question names a business metric or term, consult the shared knowledge base first** — query
-  it at least 2–3 times (definition, source tables, exclusions) until the picture is complete, exactly
-  as in [The shared knowledge base](#the-shared-knowledge-base). This decides *which tables and formula*
-  the rest of discovery is looking for.
-- Call `list_schemas` with **no params** to see which schemas you can access. **Read the `description`
-  and `[knowledge_base: …]` hints** — they tell you which schema maps to the brand/market in question,
-  so you pick the right source instead of pattern-matching a prefix. (If the question is itself about
-  access — "what can I query?", "do I have access to X?" — reach for `my_access`; it names their
-  profiles and can `check` a specific schema/table.)
-- Use `list_schemas search:"<noun>"` with concrete nouns from the question ("listing", "payment",
-  "order", "user") to locate candidate tables and columns quickly across all your schemas.
-- Confirm the exact shape with `list_schemas schema:"<name>"` then `list_schemas table:"schema.table"`.
+- **Find the candidate schema.** Call `list_schemas` (no params) to see what you can access, and use
+  `search:"<noun>"` with concrete nouns from the question ("listing", "order", "shipping", "payment") to
+  locate it fast. **Read each schema's `description` and `[knowledge_base: …]` hint** — the description
+  tells you which schema maps to the brand/market and metric in question; the hint tells you which
+  knowledge base defines it. (If the question is itself about access — "what can I query?", "do I have
+  access to X?" — reach for `my_access`; it names their profiles and can `check` a specific name.)
+- **Follow that schema's `[knowledge_base: …]` pointer and query the KB it names — at least 2–3 times**
+  (definition, source tables, exclusions) until the metric's picture is complete, exactly as in
+  [The shared knowledge base](#the-shared-knowledge-base). Use the KB the schema points to, **not**
+  whichever one you searched first. This is what decides which tables and formula the rest of discovery
+  is looking for.
+- **Confirm the exact shape** with `list_schemas schema:"<name>"` then `list_schemas table:"schema.table"`.
   Read the **table/column descriptions and the `[PK]`/`[FK → …]`/`[UNIQUE]` flags** — they hand you the
   join keys and the real meaning of each column. Match real names and types — don't assume `created_at`
   exists; check.
