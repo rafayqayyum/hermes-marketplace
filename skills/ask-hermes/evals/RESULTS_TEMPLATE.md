@@ -1,4 +1,4 @@
-# Live eval results — hermes-analyst
+# Live eval results — ask-hermes
 
 > Copy this file per run (e.g. `results-iteration-1.md`). Fill in as you go, then send it back.
 
