@@ -1,5 +1,5 @@
 ---
-name: hermes-analyst
+name: ask-hermes
 description: >-
   Answer data questions against the Hermes data warehouse (Amazon Redshift) by driving the
   `hermes-warehouse` MCP server's read-only, access-scoped tools (`list_schemas`,
@@ -14,7 +14,7 @@ description: >-
   might touch the warehouse, prefer this skill over guessing SQL on your own.
 ---
 
-# Warehouse Analytics
+# Ask Hermes
 
 Your job is to turn a person's data question into a **trustworthy answer** — or a dashboard — by
 driving the `hermes-warehouse` MCP server and the knowledge base that explains what its data means. You
@@ -155,7 +155,7 @@ cites wins — don't substitute a sibling because its columns match.
 the live tables with a couple of quick grounding probes (does the tenant resolve, is the volume
 plausible, does the join line up) before running the real aggregate — kept within the row cap. Both the
 KB searches and these probes are private workbench steps: run them **silently** and never narrate them
-(see [the one rule](#hermes-analyst) above). If neither the catalog descriptions nor the schema's
+(see [the one rule](#ask-hermes) above). If neither the catalog descriptions nor the schema's
 knowledge base carry anything for the term, fall back to ordinary discovery (phase 2) and **state your
 assumptions** — don't invent a definition.
 
